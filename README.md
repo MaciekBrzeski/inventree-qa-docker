@@ -76,6 +76,7 @@ curl -H 'Authorization: Token inv-...' http://inventree.localhost/api/part/
 | `setup.sh` | Bootstrap + seed restore script |
 | `seed/inventree-seed.sql.gz` | Postgres dump of the `inventree` database |
 | `seed/inventree-media.tar.gz` | Media files from `/home/inventree/data/media` |
+| `seed/inventree-static.tar.gz` | Static files (web frontend, admin, DRF) from `/home/inventree/data/static` — ships the pre-built SPA so a fresh clone does not need to download and build it |
 | `.gitignore` | Excludes `.env`, `inventree-data/`, restore markers |
 
 ## What's in the seed?
@@ -123,7 +124,8 @@ To capture a new dump from a running stack:
 
 ```bash
 docker exec inventree-db pg_dump -U pguser -d inventree | gzip > seed/inventree-seed.sql.gz
-docker exec inventree-server tar czf - -C /home/inventree/data media > seed/inventree-media.tar.gz
+docker exec inventree-server tar czf - -C /home/inventree/data media  > seed/inventree-media.tar.gz
+docker exec inventree-server tar czf - -C /home/inventree/data static > seed/inventree-static.tar.gz
 ```
 
 Commit and push. Others pulling the repo will get the refreshed state on

@@ -1,4 +1,5 @@
 .env
 inventree-data/
 seed/.media-restored
+seed/.static-restored
 *.log

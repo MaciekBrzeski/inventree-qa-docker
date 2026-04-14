@@ -70,6 +70,17 @@ else
   echo "[setup] media already restored (seed/.media-restored exists)"
 fi
 
+if [[ ! -f seed/.static-restored ]]; then
+  echo "[setup] restoring static files (web frontend + admin + rest_framework)"
+  $SUDO $DC exec -T inventree-server sh -c "rm -rf /home/inventree/data/static && mkdir -p /home/inventree/data"
+  $SUDO $DC exec -T inventree-server tar xzf - -C /home/inventree/data < seed/inventree-static.tar.gz
+  touch seed/.static-restored
+  echo "[setup] restarting inventree-proxy to pick up restored static files"
+  $SUDO $DC restart inventree-proxy
+else
+  echo "[setup] static already restored (seed/.static-restored exists)"
+fi
+
 echo ""
 echo "[setup] done. InvenTree is starting at: ${INVENTREE_SITE_URL}"
 echo "[setup] admin login: ${INVENTREE_ADMIN_USER} / ${INVENTREE_ADMIN_PASSWORD}"
