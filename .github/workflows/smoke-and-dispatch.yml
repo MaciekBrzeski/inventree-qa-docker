@@ -1,0 +1,73 @@
+name: Smoke + dispatch QA
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Map inventree.localhost to 127.0.0.1
+        run: echo "127.0.0.1 inventree.localhost" | sudo tee -a /etc/hosts
+
+      - name: Boot stack + restore seed
+        run: ./setup.sh
+
+      - name: Wait for /api/ to become healthy
+        run: |
+          for i in {1..90}; do
+            if curl -sf http://inventree.localhost/api/ > /dev/null 2>&1; then
+              echo "InvenTree up after ${i}s"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs --tail=100 || true
+          exit 1
+
+      - name: Assert API banner + version
+        run: |
+          curl -s http://inventree.localhost/api/ | tee /tmp/api.json
+          grep -q '"server": "InvenTree"' /tmp/api.json
+          grep -q '"apiVersion"'            /tmp/api.json
+
+      - name: Assert admin token endpoint works
+        run: |
+          curl -sf -u admin:changeme http://inventree.localhost/api/user/token/ | grep -q '"token":'
+
+      - name: Assert seeded data present (part_part > 0)
+        run: |
+          COUNT=$(docker compose exec -T inventree-db psql -U pguser -d inventree -tAc 'SELECT count(*) FROM part_part' | tr -d '[:space:]')
+          echo "part_part has $COUNT rows"
+          test "$COUNT" -gt 0
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --tail=200 || true
+
+  dispatch-qa:
+    needs: smoke
+    if: success() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger QA suite on inventree-qa-automation
+        env:
+          GH_TOKEN: ${{ secrets.CROSS_REPO_DISPATCH_TOKEN }}
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "CROSS_REPO_DISPATCH_TOKEN secret not set — skipping cross-repo dispatch."
+            echo "Add a PAT with 'repo' scope at Settings → Secrets → Actions."
+            exit 0
+          fi
+          gh api repos/MaciekBrzeski/inventree-qa-automation/dispatches \
+            -f event_type=docker-updated \
+            -F "client_payload[ref]=${{ github.ref_name }}" \
+            -F "client_payload[sha]=${{ github.sha }}"
+          echo "Dispatched QA suite against inventree-qa-docker@${{ github.ref_name }}"
