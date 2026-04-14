@@ -40,13 +40,20 @@ for i in {1..60}; do
   sleep 1
 done
 
-SEEDED=$($SUDO $DC exec -T inventree-db psql -U "$INVENTREE_DB_USER" -d "$INVENTREE_DB_NAME" -tAc \
-  "SELECT 1 FROM information_schema.tables WHERE table_name='part_part' LIMIT 1" 2>/dev/null || echo "")
+# Count rows in part_part. If the table is missing OR empty, the DB has not
+# been seeded yet (fresh pgdata OR a server container migrated first and left
+# the schema empty). In both cases we wipe the `public` schema and restore the
+# dump. If the table already has rows, skip.
+PART_COUNT=$($SUDO $DC exec -T inventree-db psql -U "$INVENTREE_DB_USER" -d "$INVENTREE_DB_NAME" -tAc \
+  "SELECT count(*) FROM part_part" 2>/dev/null || echo "0")
+PART_COUNT=$(echo "$PART_COUNT" | tr -d '[:space:]')
 
-if [[ "$SEEDED" == "1" ]]; then
-  echo "[setup] DB already has part_part — skipping seed restore"
+if [[ "$PART_COUNT" =~ ^[0-9]+$ ]] && (( PART_COUNT > 0 )); then
+  echo "[setup] DB already seeded (part_part has $PART_COUNT rows) — skipping seed restore"
 else
-  echo "[setup] restoring seed/inventree-seed.sql.gz into $INVENTREE_DB_NAME"
+  echo "[setup] DB empty — wiping public schema and restoring seed/inventree-seed.sql.gz"
+  $SUDO $DC exec -T inventree-db psql -U "$INVENTREE_DB_USER" -d "$INVENTREE_DB_NAME" \
+    -c "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO $INVENTREE_DB_USER; GRANT ALL ON SCHEMA public TO public;" >/dev/null
   gunzip -c seed/inventree-seed.sql.gz | $SUDO $DC exec -T inventree-db psql -U "$INVENTREE_DB_USER" -d "$INVENTREE_DB_NAME" >/dev/null
 fi
 
