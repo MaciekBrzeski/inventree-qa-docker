@@ -1,0 +1,4 @@
+.env
+inventree-data/
+seed/.media-restored
+*.log
